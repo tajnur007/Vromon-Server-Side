@@ -1,20 +1,12 @@
 const express = require('express');
 const { MongoClient, ObjectID } = require('mongodb');
 const cors = require('cors');
-var admin = require("firebase-admin");
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Firebase Admin Initialization 
-var serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-});
-
-// middleware
+// middlewares
 app.use(cors());
 app.use(express.json());
 
@@ -36,13 +28,15 @@ async function run() {
         const ordersCollection = database.collection('orders');
         const usersCollection = database.collection('users');
 
-        //GET Destinations API
+        //Get All Destinations 
         app.get('/destinations', async (req, res) => {
             // console.log('Hitting destination...')
             const cursor = await destinationCollection.find({}).toArray();
             // console.log(cursor);
             res.send(cursor);
         });
+
+        // Get Single Destination 
         app.get('/destinations/:id', async (req, res) => {
             // console.log('Hitting particular destination...');
             const id = req.params.id;
@@ -52,13 +46,15 @@ async function run() {
             res.send(cursor);
         });
 
-        //GET Packages API
+        //Get All Packages
         app.get('/packages', async (req, res) => {
             // console.log('Hitting Packages!');
             const cursor = await packageCollection.find({}).toArray();
             // console.log(cursor);
             res.send(cursor);
         });
+
+        // Get Single Package 
         app.get('/packages/:id', async (req, res) => {
             // console.log('Hitting particular package...');
             const id = req.params.id;
@@ -69,50 +65,26 @@ async function run() {
         });
 
         // Get My Orders 
-        app.get('/myOrders', verifyToken, async (req, res) => {
+        app.get('/myOrders', async (req, res) => {
             const email = req.query?.email;
 
-            if (req.decodedUserEmail === email) {
-                // console.log('Hitting the post', req.body);
-                const query = { receiverEmail: `${email}` };
-                const result = await ordersCollection.find(query).toArray();
-                console.log(result);
-                res.json(result);
-            }
-            else {
-                res.status(401).json({ message: 'User not authorized' });
-            }
+            // console.log('Hitting the post', req.body);
+            const query = { receiverEmail: `${email}` };
+            const result = await ordersCollection.find(query).toArray();
+            console.log(result);
+            res.json(result);
         });
 
         // Get All Orders 
-        app.get('/orders', verifyToken, async (req, res) => {
+        app.get('/orders', async (req, res) => {
             const email = req.query?.email;
             const query = { email: `${email}` };
             const result = await usersCollection.findOne(query);
 
-            if ((req.decodedUserEmail === email) && (result?.role === 'admin')) {
+            if (result) {
                 const searchResult = await ordersCollection.find({}).toArray();
                 console.log(searchResult);
                 res.json(searchResult);
-            }
-            else {
-                res.status(401).json({ message: 'User not authorized' });
-            }
-        });
-
-        // Admin Checking 
-        app.post('/isAdmin', async (req, res) => {
-            console.log('Hitting the post', req.body);
-            const query = { email: `${req.body.email}` };
-            const result = await usersCollection.findOne(query);
-            console.log(result);
-
-            if (result?.role === 'admin') {
-                res.json({ isAdmin: true });
-            }
-            else {
-
-                res.json({ isAdmin: false });
             }
         });
 
@@ -131,43 +103,30 @@ async function run() {
         });
 
         // Add an Order 
-        app.post('/addOrder', verifyToken, async (req, res) => {
-            const email = req.query?.email;
-
-            if (req.decodedUserEmail === email) {
-                // console.log('Hitting the post', req.body);
-                const newOrder = req.body;
-                const insertResult = await ordersCollection.insertOne(newOrder);
-                console.log(insertResult);
-                res.json(insertResult);
-            }
-            else {
-                res.status(401).json({ message: 'User not authorized' });
-            }
+        app.post('/addOrder', async (req, res) => {
+            // console.log('Hitting the post', req.body);
+            const newOrder = req.body;
+            const insertResult = await ordersCollection.insertOne(newOrder);
+            console.log(insertResult);
+            res.json(insertResult);
         });
 
         // Add a Product 
-        app.post('/addProduct', verifyToken, async (req, res) => {
+        app.post('/addPackage', async (req, res) => {
             const email = req.query?.email;
             const query = { email: `${email}` };
             const result = await usersCollection.findOne(query);
-            console.log(result);
 
-            if ((req.decodedUserEmail === email) && (result?.role === 'admin')) {
-                // console.log('Hitting the post', req.body);
+            if (result) {
                 const newProduct = req.body;
                 const insertResult = await packageCollection.insertOne(newProduct);
                 console.log(insertResult);
                 res.json(insertResult);
-
-            }
-            else {
-                res.status(401).json({ message: 'User not authorized' });
             }
         });
 
         // Update Order Status 
-        app.put('/updateOrder', verifyToken, async (req, res) => {
+        app.put('/updateOrder', async (req, res) => {
             const id = req.body?._id;
             const status = req.body?.status;
             const filter = { _id: ObjectID(id) };
@@ -178,39 +137,19 @@ async function run() {
                 },
             };
 
-            // Admin Checking 
-            const email = req.query?.email;
-            const query = { email: `${email}` };
-            const result = await usersCollection.findOne(query);
-
-            if ((req.decodedUserEmail === email) || (result?.role === 'admin')) {
-                const updateResult = await ordersCollection.updateOne(filter, updateDoc, options);
-                console.log(updateResult);
-                res.json(updateResult);
-            }
-            else {
-                res.status(401).json({ message: 'User not authorized' });
-            }
+            const updateResult = await ordersCollection.updateOne(filter, updateDoc, options);
+            console.log(updateResult);
+            res.json(updateResult);
         });
 
         // Delete Order 
-        app.delete('/deleteOrder', verifyToken, async (req, res) => {
+        app.delete('/deleteOrder', async (req, res) => {
             const id = req.body?._id;
             const filter = { _id: ObjectID(id) };
 
-            // Admin Checking 
-            const email = req.query?.email;
-            const query = { email: `${email}` };
-            const result = await usersCollection.findOne(query);
-
-            if ((req.decodedUserEmail === email) || (result?.role === 'admin')) {
-                const deleteResult = await ordersCollection.deleteOne(filter);
-                console.log(deleteResult);
-                res.json(deleteResult);
-            }
-            else {
-                res.status(401).json({ message: 'User not authorized' });
-            }
+            const deleteResult = await ordersCollection.deleteOne(filter);
+            console.log(deleteResult);
+            res.json(deleteResult);
         });
 
     }
